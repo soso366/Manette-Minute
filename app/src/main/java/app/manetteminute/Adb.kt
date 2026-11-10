@@ -45,5 +45,16 @@ object Adb {
         }
     }
 
+    /** Copie un fichier de l'appli vers le Fire TV (dossier temporaire accessible au système). */
+    fun push(ctx: Context, file: File, remote: String) {
+        try { get(ctx).push(file, remote) } catch (e: Exception) { reset(); get(ctx).push(file, remote) }
+    }
+
+    /** Lance une commande qui continue même si l'appli est arrêtée entre-temps (mise à jour, redémarrage). */
+    fun detached(ctx: Context, cmd: String) {
+        val esc = cmd.replace("\"", "\\\"")
+        shell(ctx, "nohup sh -c \"$esc\" > /dev/null 2>&1 &")
+    }
+
     fun ok(ctx: Context): Boolean = try { shell(ctx, "echo mm-ok").contains("mm-ok") } catch (e: Exception) { false }
 }

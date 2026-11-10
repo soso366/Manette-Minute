@@ -11,8 +11,20 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      MM_SERVER: ${{ secrets.MM_SERVER }}
+      MM_ADMIN_KEY: ${{ secrets.MM_ADMIN_KEY }}
+      MM_KEYSTORE_B64: ${{ secrets.MM_KEYSTORE_B64 }}
+      MM_KEYSTORE_PASS: ${{ secrets.MM_KEYSTORE_PASS }}
     steps:
+      - name: Numéro de version
+        run: echo "MM_VERSION=$((GITHUB_RUN_NUMBER + 10))" >> "$GITHUB_ENV"
+
       - uses: actions/checkout@v4
+
+      - name: Clé de signature (depuis les secrets GitHub)
+        if: env.MM_KEYSTORE_B64 != ''
+        run: echo "$MM_KEYSTORE_B64" | base64 -d > app/signing.keystore
 
       - uses: actions/setup-java@v4
         with:
@@ -32,11 +44,15 @@ jobs:
       - name: Publier dans « Releases »
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.${{ github.run_number }}
-          name: Manette Minute v1.${{ github.run_number }}
-          body: "Fichier à installer sur le Fire TV : ManetteMinute.apk"
+          tag_name: v${{ env.MM_VERSION }}
+          name: Manette Minute version ${{ env.MM_VERSION }}
+          body: "Fichier à installer sur le Fire TV : ManetteMinute.apk — numéro de version : ${{ env.MM_VERSION }}"
           files: ManetteMinute.apk
           make_latest: true
+
+      - name: Envoyer la nouvelle version aux bornes (si ton serveur est renseigné dans les secrets GitHub)
+        if: env.MM_SERVER != ''
+        run: curl -fsS -F act=apk -F "version=$MM_VERSION" -F "apk=@ManetteMinute.apk" "$MM_SERVER/admin?key=$MM_ADMIN_KEY" -o /dev/null
 
       - uses: actions/upload-artifact@v4
         with:

@@ -11,17 +11,33 @@ android {
         applicationId = "app.manetteminute"
         minSdk = 28
         targetSdk = 30          // Fire OS 7/8 (Android 9/11)
-        versionCode = 2
-        versionName = "1.1"
+        // Numéro de version donné automatiquement par GitHub à chaque fabrication
+        versionCode = (System.getenv("MM_VERSION") ?: "2").toInt()
+        versionName = "1." + (System.getenv("MM_VERSION") ?: "2")
         // Adresse du serveur pré-remplie sur chaque Fire TV (modifiable ici une fois pour toutes)
         buildConfigField("String", "DEFAULT_SERVER", "\"\"")
     }
     buildFeatures { buildConfig = true }
 
+    // Signature fixe : indispensable pour que chaque nouvelle version s'installe par-dessus l'ancienne
+    // La clé et son mot de passe viennent des « secrets » GitHub (jamais écrits dans le code).
+    val ks = file("signing.keystore")
+    val ksPass = System.getenv("MM_KEYSTORE_PASS")
+    val signed = ks.exists() && !ksPass.isNullOrEmpty()
+    signingConfigs {
+        create("borne") {
+            if (signed) {
+                storeFile = ks
+                storePassword = ksPass
+                keyAlias = "manetteminute"
+                keyPassword = ksPass
+            }
+        }
+    }
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (signed) signingConfigs.getByName("borne") else signingConfigs.getByName("debug")
         }
     }
     compileOptions {

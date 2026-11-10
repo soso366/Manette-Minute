@@ -87,6 +87,31 @@ object Api {
     fun activate(server: String, code: String): JSONObject =
         postForJson("${server.trim().trimEnd('/')}/api/activate", JSONObject().put("code", code.trim().uppercase()))
 
+    private fun auth(ctx: Context) = JSONObject().put("borne", Store.borne(ctx)).put("code", Store.code(ctx)).put("device", Store.deviceId(ctx))
+
+    /** Signale au serveur que le jeu payé n'a pas pu démarrer (le client choisit alors : relancer, changer, rembourser). */
+    fun launchFailed(ctx: Context, reason: String) {
+        postForJson("${Store.server(ctx)}/api/launch-failed", auth(ctx).put("reason", reason.take(200)))
+    }
+
+    fun cmdDone(ctx: Context, id: String) {
+        postForJson("${Store.server(ctx)}/api/cmd-done", auth(ctx).put("id", id))
+    }
+
+    /** Télécharge la dernière version de l'appli depuis ton serveur. */
+    fun downloadApk(ctx: Context, dest: java.io.File): Boolean {
+        val c = URL("${Store.server(ctx)}/api/app").openConnection() as HttpURLConnection
+        c.connectTimeout = 10000; c.readTimeout = 60000
+        c.requestMethod = "POST"; c.doOutput = true
+        c.setRequestProperty("content-type", "application/json")
+        try {
+            c.outputStream.use { it.write(auth(ctx).toString().toByteArray()) }
+            if (c.responseCode != 200) return false
+            c.inputStream.use { inp -> dest.outputStream().use { inp.copyTo(it) } }
+            return dest.length() > 100_000
+        } finally { c.disconnect() }
+    }
+
     fun postJson(url: String, body: JSONObject): Int {
         val c = URL(url).openConnection() as HttpURLConnection
         c.connectTimeout = 6000; c.readTimeout = 6000
