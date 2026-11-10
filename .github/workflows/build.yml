@@ -32,8 +32,8 @@ jobs:
       - name: Publier dans « Releases »
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: latest
-          name: Manette Minute – dernière version
+          tag_name: v1.${{ github.run_number }}
+          name: Manette Minute v1.${{ github.run_number }}
           body: "Fichier à installer sur le Fire TV : ManetteMinute.apk"
           files: ManetteMinute.apk
           make_latest: true
