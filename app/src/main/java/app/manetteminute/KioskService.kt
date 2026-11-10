@@ -25,6 +25,7 @@ class KioskService : Service() {
     private var lastOk = System.currentTimeMillis()
     private var lastCmdId = ""
     private var updateTriedAt = 0L
+    private var netTestAt = 0L
 
     companion object {
         @Volatile var lastError: String = ""
@@ -92,6 +93,12 @@ class KioskService : Service() {
         if (lastStatus == "locked") lastStatus = "idle"
         val status = st.optString("status", "idle")
         if (status == "idle") maybeUpdate(st.optInt("apkVersion", 0))
+        // Test de connexion automatique toutes les 30 min quand la borne est libre (et au démarrage)
+        val nowT = System.currentTimeMillis()
+        if (status == "idle" && (netTestAt == 0L || nowT - netTestAt > 30 * 60_000L)) {
+            netTestAt = nowT
+            Thread { try { NetTest.runAndReport(this, light = false) } catch (_: Exception) {} }.start()
+        }
         val game = st.optString("game", "").ifBlank { null }
         val now = System.currentTimeMillis()
 
@@ -164,6 +171,11 @@ class KioskService : Service() {
             "closegame" -> { Launcher.stopGames(this); Launcher.bringHome(this) }
             "restartapp" -> Adb.detached(this, "sleep 1; am force-stop $packageName; sleep 2; am start -n $packageName/.MainActivity")
             "reboot" -> Adb.detached(this, "sleep 2; reboot")
+            "speedtest" -> {
+                netTestAt = System.currentTimeMillis()
+                val busy = lastStatus == "playing" || lastStatus == "launching"
+                Thread { try { NetTest.runAndReport(this, light = busy) } catch (_: Exception) {} }.start()
+            }
         }
     }
 
