@@ -11,9 +11,12 @@ android {
         applicationId = "app.manetteminute"
         minSdk = 28
         targetSdk = 30          // Fire OS 7/8 (Android 9/11)
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1"
+        // Adresse du serveur pré-remplie sur chaque Fire TV (modifiable ici une fois pour toutes)
+        buildConfigField("String", "DEFAULT_SERVER", "\"\"")
     }
+    buildFeatures { buildConfig = true }
 
     buildTypes {
         release {

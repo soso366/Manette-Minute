@@ -13,12 +13,21 @@ object Store {
     fun server(c: Context): String = (p(c).getString("server", "") ?: "").trim().trimEnd('/')
     fun borne(c: Context): String = (p(c).getString("borne", "") ?: "").trim()
     fun pin(c: Context): String = p(c).getString("pin", "") ?: ""
-    fun isConfigured(c: Context) = server(c).startsWith("http") && borne(c).isNotEmpty()
+    fun code(c: Context): String = (p(c).getString("code", "") ?: "").trim().uppercase()
+    fun isConfigured(c: Context) = server(c).startsWith("http") && borne(c).isNotEmpty() && code(c).isNotEmpty()
 
-    fun save(c: Context, server: String, borne: String, pin: String) {
+    fun save(c: Context, server: String, borne: String, code: String, pin: String) {
         p(c).edit().putString("server", server.trim()).putString("borne", borne.trim().lowercase())
-            .putString("pin", pin.trim()).apply()
+            .putString("code", code.trim().uppercase()).putString("pin", pin.trim()).apply()
     }
+
+    /** Identifiant unique de ce Fire TV (sert à lier une borne à un seul appareil). */
+    @android.annotation.SuppressLint("HardwareIds")
+    fun deviceId(c: Context): String =
+        android.provider.Settings.Secure.getString(c.contentResolver, android.provider.Settings.Secure.ANDROID_ID) ?: "inconnu"
+
+    /** Raison du blocage de la borne (vide = borne active). Affichée sur l'écran d'accueil. */
+    @Volatile var lockReason: String = ""
 
     /** Pause du kiosque (pendant l'enregistrement d'un lancement ou un test), avec fin automatique. */
     @Volatile var pausedUntil: Long = 0L
@@ -55,6 +64,28 @@ object Api {
             return JSONObject(c.inputStream.bufferedReader().readText())
         } finally { c.disconnect() }
     }
+
+    /** POST qui renvoie la réponse JSON, même en cas de refus (403, 404…). */
+    fun postForJson(url: String, body: JSONObject): JSONObject {
+        val c = URL(url).openConnection() as HttpURLConnection
+        c.connectTimeout = 6000; c.readTimeout = 6000
+        c.requestMethod = "POST"; c.doOutput = true
+        c.setRequestProperty("content-type", "application/json")
+        try {
+            c.outputStream.use { it.write(body.toString().toByteArray()) }
+            val stream = if (c.responseCode in 200..299) c.inputStream else c.errorStream
+            val txt = stream?.bufferedReader()?.readText() ?: "{}"
+            return try { JSONObject(txt) } catch (e: Exception) { JSONObject().put("ok", false).put("error", "Réponse invalide du serveur") }
+        } finally { c.disconnect() }
+    }
+
+    /** Vérifie le code d'activation + l'appareil, et renvoie l'état de la borne. */
+    fun device(ctx: Context): JSONObject = postForJson("${Store.server(ctx)}/api/device",
+        JSONObject().put("borne", Store.borne(ctx)).put("code", Store.code(ctx)).put("device", Store.deviceId(ctx)))
+
+    /** Retrouve la borne à partir du seul code d'activation. */
+    fun activate(server: String, code: String): JSONObject =
+        postForJson("${server.trim().trimEnd('/')}/api/activate", JSONObject().put("code", code.trim().uppercase()))
 
     fun postJson(url: String, body: JSONObject): Int {
         val c = URL(url).openConnection() as HttpURLConnection

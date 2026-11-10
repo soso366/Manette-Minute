@@ -82,14 +82,24 @@ class AdminActivity : Activity() {
         if (KioskService.lastError.isNotEmpty()) status.text = "Dernière erreur : ${KioskService.lastError}"
 
         label("Adresse du serveur (ex. https://manette-minute.ton-nom.workers.dev)")
-        val server = field(Store.server(this), "https://…workers.dev")
-        label("Identifiant de la borne (le même que sur la page /admin du serveur)")
-        val borne = field(Store.borne(this), "ex. barber-club")
-        label("Code PIN pour ce menu (laisser vide = pas de code)")
+        val server = field(Store.server(this).ifEmpty { BuildConfig.DEFAULT_SERVER }, "https://…workers.dev")
+        label("Code d'activation de la borne (affiché sur ta page de gestion)")
+        val code = field(Store.code(this), "ex. CST7LUDF")
+        label("Code PIN pour ce menu (4 chiffres minimum, obligatoire)")
         val pin = field(Store.pin(this), "ex. 4821", number = true)
-        button("💾 Enregistrer") {
-            Store.save(this, server.text.toString(), borne.text.toString(), pin.text.toString())
-            status.text = "✅ Enregistré"
+        if (Store.borne(this).isNotEmpty()) label("Borne actuelle : ${Store.borne(this)}")
+        button("✅ Activer la borne") {
+            val sv = server.text.toString().trim(); val cd = code.text.toString().trim().uppercase(); val pn = pin.text.toString().trim()
+            if (!sv.startsWith("https://")) { status.text = "❌ L'adresse du serveur doit commencer par https://"; return@button }
+            if (pn.length < 4) { status.text = "❌ Choisis un code PIN d'au moins 4 chiffres"; return@button }
+            bg {
+                val r = Api.activate(sv, cd)
+                if (!r.optBoolean("ok")) return@bg "❌ " + r.optString("error", "Code refusé")
+                Store.save(this, sv, r.optString("borne"), cd, pn)
+                val d = Api.device(this)
+                if (!d.optBoolean("ok")) "❌ " + d.optString("error")
+                else "✅ Borne « ${r.optString("name")} » activée sur ce Fire TV"
+            }
         }
 
         title("1 · Connexion au Fire TV")
@@ -106,7 +116,9 @@ class AdminActivity : Activity() {
         val list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         button("🔄 Charger les jeux depuis le serveur") {
             bg {
-                val games = Api.config(this).optJSONArray("games") ?: JSONArray()
+                val d = Api.device(this)
+                if (!d.optBoolean("ok")) return@bg "❌ " + d.optString("error", "Borne non activée")
+                val games = d.optJSONArray("games") ?: JSONArray()
                 ui.post { list.removeAllViews(); for (i in 0 until games.length()) gameRow(list, games.getString(i), apps) }
                 "✅ ${games.length()} jeux chargés"
             }

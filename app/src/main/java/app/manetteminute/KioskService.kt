@@ -22,6 +22,7 @@ class KioskService : Service() {
     private var currentGame: String? = null
     private var lastStatus = "idle"
     private var readyAt = 0L
+    private var lastOk = System.currentTimeMillis()
 
     companion object {
         @Volatile var lastError: String = ""
@@ -56,18 +57,36 @@ class KioskService : Service() {
     private fun loop() {
         while (running) {
             try {
-                if (!Store.isPaused() && Store.isConfigured(this)) tick()
+                if (!Store.isConfigured(this)) Store.lockReason = "Borne pas encore activée"
+                else if (!Store.isPaused()) { tick(); lastOk = System.currentTimeMillis() }
                 lastError = ""
             } catch (e: Exception) {
                 lastError = e.message ?: e.toString()
                 Log.w("MM", "tick", e)
+                // Plus de contact avec le serveur depuis 10 min : on bloque la borne
+                if (System.currentTimeMillis() - lastOk > 10 * 60_000L) {
+                    lock("Pas de connexion au serveur")
+                }
             }
             Thread.sleep(2000)
         }
     }
 
+    private fun lock(reason: String) {
+        Store.lockReason = reason
+        try {
+            if (lastStatus != "locked") { Launcher.stopGames(this); lastLaunchAt = 0; currentGame = null; readyAt = 0 }
+            if (Launcher.foreground(this) != packageName) Launcher.bringHome(this)
+        } catch (_: Exception) {}
+        lastStatus = "locked"
+    }
+
     private fun tick() {
-        val st = Api.state(this)
+        val st = Api.device(this)
+        if (!st.optBoolean("ok", false)) { lock(st.optString("error", "Borne non autorisée")); return }
+        if (st.optString("status") == "suspended") { lock("Borne momentanément indisponible"); return }
+        Store.lockReason = ""
+        if (lastStatus == "locked") lastStatus = "idle"
         val status = st.optString("status", "idle")
         val game = st.optString("game", "").ifBlank { null }
         val now = System.currentTimeMillis()

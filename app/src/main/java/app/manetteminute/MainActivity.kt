@@ -5,6 +5,8 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
 import android.view.KeyEvent
 import android.view.View
@@ -21,6 +23,21 @@ class MainActivity : Activity() {
     private var loadedUrl = ""
     private var menuCount = 0
     private var menuFirst = 0L
+    private val ui = Handler(Looper.getMainLooper())
+    private val refresh = object : Runnable {
+        override fun run() { showLock(); ui.postDelayed(this, 2000) }
+    }
+
+    /** Affiche le message de blocage (borne coupée, code invalide, pas de connexion…). */
+    private fun showLock() {
+        val r = if (!Store.isConfigured(this)) "Borne pas encore activée" else Store.lockReason
+        if (r.isEmpty()) { info.visibility = View.GONE; web.visibility = View.VISIBLE }
+        else {
+            info.text = "Manette Minute\n\n$r\n\n(Réglages : 5 appuis sur ☰)"
+            info.visibility = View.VISIBLE
+            if (r != "Borne momentanément indisponible") web.visibility = View.INVISIBLE
+        }
+    }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,6 +53,7 @@ class MainActivity : Activity() {
         }
         info = TextView(this).apply {
             setTextColor(Color.WHITE); textSize = 22f; gravity = Gravity.CENTER
+            setBackgroundColor(Color.parseColor("#E60F0B1F"))
             text = "Manette Minute\n\nAppuie 5 fois sur ☰ (Menu) pour configurer la borne."
             visibility = View.GONE
         }
@@ -46,14 +64,13 @@ class MainActivity : Activity() {
     override fun onResume() {
         super.onResume()
         hideBars()
-        if (!Store.isConfigured(this)) {
-            info.visibility = View.VISIBLE
-            return
-        }
-        info.visibility = View.GONE
+        ui.removeCallbacks(refresh); ui.post(refresh)
+        if (!Store.isConfigured(this)) return
         val url = "${Store.server(this)}/tv/${Store.borne(this)}?app=1"
         if (url != loadedUrl) { loadedUrl = url; web.loadUrl(url) }
     }
+
+    override fun onPause() { super.onPause(); ui.removeCallbacks(refresh) }
 
     @Suppress("DEPRECATION")
     private fun hideBars() {
