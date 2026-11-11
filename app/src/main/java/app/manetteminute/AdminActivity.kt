@@ -106,7 +106,7 @@ class AdminActivity : Activity() {
         label("Le débogage ADB doit être activé dans Paramètres > Mon Fire TV > Options pour les développeurs. " +
             "À la première connexion, coche « Toujours autoriser » puis OK.")
         button("🔌 Tester la connexion") {
-            bg { if (Adb.ok(this)) "✅ Connexion au Fire TV OK" else "❌ Pas de connexion : vérifie le débogage ADB, puis réessaie" }
+            bg { Adb.reset(); if (Adb.ok(this)) "✅ Connexion au Fire TV OK" else "❌ Pas de connexion. Détail : " + Adb.lastError.ifEmpty { "inconnu" } + " — si une fenêtre « Autoriser » apparaît, coche « Toujours autoriser » puis réessaie" }
         }
 
         title("2 · Jeux de la borne")

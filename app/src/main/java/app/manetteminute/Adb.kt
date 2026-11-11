@@ -21,12 +21,46 @@ object Adb {
         return AdbKeyPair.read(priv, pub)
     }
 
+    @Volatile var lastError: String = ""
+
+    /** Adresses à essayer : le Fire TV lui-même, puis son adresse sur le Wi-Fi/câble. */
+    @Suppress("DEPRECATION")
+    private fun hosts(ctx: Context): List<String> {
+        val l = mutableListOf("127.0.0.1")
+        try {
+            val wm = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as android.net.wifi.WifiManager
+            val ip = wm.connectionInfo.ipAddress
+            if (ip != 0) l += "${ip and 255}.${ip shr 8 and 255}.${ip shr 16 and 255}.${ip shr 24 and 255}"
+        } catch (_: Exception) {}
+        try {
+            java.net.NetworkInterface.getNetworkInterfaces()?.toList()?.forEach { ni ->
+                ni.inetAddresses.toList().filterIsInstance<java.net.Inet4Address>()
+                    .filter { !it.isLoopbackAddress }.forEach { a -> a.hostAddress?.let { if (it !in l) l += it } }
+            }
+        } catch (_: Exception) {}
+        return l
+    }
+
     @Synchronized
     private fun get(ctx: Context): Dadb {
         conn?.let { return it }
-        val d = Dadb.create("127.0.0.1", 5555, keys(ctx))
-        conn = d
-        return d
+        val errs = mutableListOf<String>()
+        for (h in hosts(ctx)) {
+            // Vérifie d'abord que le port ADB répond, sinon on passe à l'adresse suivante
+            try { java.net.Socket().use { it.connect(java.net.InetSocketAddress(h, 5555), 2000) } }
+            catch (e: Exception) { errs += "$h : port fermé"; continue }
+            val d = Dadb.create(h, 5555, keys(ctx))
+            try {
+                d.shell("echo mm-ok")
+                conn = d; lastError = ""
+                return d
+            } catch (e: Exception) {
+                try { d.close() } catch (_: Exception) {}
+                errs += "$h : " + (e.message ?: e.javaClass.simpleName).take(80)
+            }
+        }
+        lastError = errs.joinToString(" · ")
+        throw IllegalStateException(lastError)
     }
 
     @Synchronized
